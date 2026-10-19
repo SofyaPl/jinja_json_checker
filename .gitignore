@@ -1,0 +1,27 @@
+# Local files, not part of the project
+private/
+.cursor/
+
+# Secrets and environment
+.env
+.env.*
+*.pem
+*.key
+*.p12
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+node_modules/

@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "JSON / Jinja checker",
+  "version": "0.3.0",
+  "description": "Проверка синтаксиса выделенного JSON и шаблонов Jinja2. Работает офлайн, ничего не отправляет.",
+  "permissions": ["activeTab", "scripting", "clipboardWrite", "storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Проверить выделенный текст"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "MacCtrl+Shift+Y"
+      },
+      "description": "Проверить выделенный текст"
+    }
+  }
+}
