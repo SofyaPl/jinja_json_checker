@@ -41,11 +41,11 @@
 git clone https://github.com/SofyaPl/jinja_json_checker.git ~/jinja_json_checker
 ```
 
-Обновление:
+Обновление (скачивает последнюю версию и заменяет ею файлы в папке; свои правки в этой папке
+не храните — они будут стёрты):
 
 ```sh
-cd ~/jinja_json_checker
-git pull
+cd ~/jinja_json_checker && git fetch && git reset --hard origin/main
 ```
 
 Какая версия сейчас стоит (последнее изменение и дата):
