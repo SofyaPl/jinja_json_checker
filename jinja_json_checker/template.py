@@ -26,6 +26,14 @@ BLOCKS = {
     "autoescape", "trans", "set",
 }
 MIDDLE = {"elif": {"if"}, "else": {"if", "for"}, "pluralize": {"trans"}}
+
+# Character classes are spelled out so that Python and JavaScript match the same text.
+TOKEN_RE = re.compile(
+    r"[ \t\r\n]*(?:(\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*')"
+    r"|([0-9][0-9_]*(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)"
+    r"|([A-Za-z_][A-Za-z0-9_]*)"
+    r"|([^ \t\r\n]))", re.S)
+OPERATOR_WORDS = {"and", "or", "not", "in", "is", "if", "else"}
 STANDALONE = {
     "extends", "include", "import", "from", "do", "break", "continue",
     "raw", "endraw",
@@ -60,6 +68,36 @@ def _strip_ws_control(body: str) -> str:
     if body[-1:] in "-+":
         body = body[:-1]
     return body
+
+
+def _missing_operator(body: str) -> Optional[Tuple[str, str, int, int]]:
+    """Two values in a row inside ``{{ }}``, like ``{{ title tojson }}``.
+
+    Returns (first, second, offset of first, length up to the end of second) or None.
+    """
+    pos = 0
+    prev = None  # (text, start) of a token that ends a value
+    prev_string = False
+    while pos < len(body):
+        m = TOKEN_RE.match(body, pos)
+        if not m or m.end() == pos:
+            break
+        pos = m.end()
+        string, number, name, op = m.groups()
+        token = string or number or name or op
+        start = m.start(m.lastindex)
+        if name == "is":
+            return None  # tests may take an argument without parentheses
+        value = bool(string or number or (name and name not in OPERATOR_WORDS))
+        if value and prev and not (string and prev_string):
+            return prev[0], token, prev[1], start + len(token) - prev[1]
+        if value or (op and op in ")]}"):
+            prev = (token, start)
+            prev_string = bool(string)
+        else:
+            prev = None
+            prev_string = False
+    return None
 
 
 def _scan_tag(text: str, start: int, issues: List[Issue]) -> Tuple[Optional[Tag], int]:
@@ -140,6 +178,14 @@ def _finish_tag(text: str, start: int, end: int, issues: List[Issue]) -> Tag:
             issues.append(_err("После «|» не указан фильтр", start, end - start))
         elif stripped.startswith("|"):
             issues.append(_err("Перед «|» нет значения", start, end - start))
+        else:
+            lead = 1 if text[start + 2:start + 3] in ("-", "+") else 0
+            gap = _missing_operator(body)
+            if gap:
+                first, second, offset, length = gap
+                issues.append(_err(
+                    "Между «%s» и «%s» не хватает оператора: возможно, пропущена «|»"
+                    % (first, second), start + 2 + lead + offset, length))
         return Tag("expr", start, end, body)
 
     m = NAME_RE.match(body)

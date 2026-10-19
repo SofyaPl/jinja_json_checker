@@ -154,6 +154,16 @@ class JsonErrorTest(unittest.TestCase):
         issue, _ = first_error('{"a": 01}')
         self.assertIn("с 0", issue.message)
 
+    def test_missing_opening_brace(self):
+        result = check('\n  "a": 1,\n  "b": 2\n}')
+        self.assertEqual(result.mode, "json")
+        self.assertIn("Не хватает «{» в начале", result.errors[0].message)
+        self.assertEqual(line_col(result.text, result.errors[0].offset), (2, 3))
+
+    def test_missing_opening_bracket(self):
+        issue, _ = first_error('{"a": 1}, {"b": 2}]')
+        self.assertIn("не хватает «[» или «{» в начале", issue.message)
+
     def test_empty(self):
         issue, _ = first_error("   ", "json")
         self.assertIn("Пустой", issue.message)
@@ -272,6 +282,21 @@ class JinjaErrorTest(unittest.TestCase):
         result = check('{"a": {{ foo, "b" 1}')
         self.assertTrue(any(i.severity == "info" for i in result.issues))
         self.assertTrue(all(i.source == "jinja" for i in result.errors))
+
+    def test_missing_pipe(self):
+        issue, (line, col) = first_error('{\n  "a": {{ title tojson }}\n}')
+        self.assertIn("Между «title» и «tojson» не хватает оператора", issue.message)
+        self.assertEqual((line, col), (2, 11))
+
+    def test_missing_pipe_with_whitespace_control(self):
+        issue, _ = first_error('{"a": {{- foo.bar tojson -}}}')
+        self.assertIn("«bar» и «tojson»", issue.message)
+
+    def test_valid_expressions_have_no_gap(self):
+        for expr in ['x if y else z', '"a" "b"', 'x is divisibleby 3', 'not x', 'a and b',
+                     'foo.bar[0]', '-x', 'loop.index0 + 1', 'x | default("a") | tojson',
+                     'a not in b', '{"k": 1}', 'f(1, 2)', '1.5e3']:
+            self.assertEqual(check('{"a": {{ %s }}}' % expr).issues, [], expr)
 
     def test_unclosed_comment(self):
         issue, _ = first_error('{# note\n{"a": 1}')

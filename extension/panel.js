@@ -29,6 +29,7 @@ header { padding: 10px 12px 8px; border-bottom: 1px solid #e3e3e3; cursor: move;
 .meta { color: #666; font-size: 12px; margin-top: 2px; }
 .notice { margin-top: 6px; padding: 6px 8px; border-radius: 6px; font-weight: 600;
   background: #ffebe9; color: #cf222e; border: 1px solid #ff8182; cursor: auto; }
+.notice.soft { background: #fff8c5; color: #7d4e00; border-color: #d4a72c; }
 .issues { max-height: 38vh; overflow: auto; border-bottom: 1px solid #e3e3e3; }
 .issue { padding: 6px 12px; border-top: 1px solid #f0f0f0; cursor: pointer; }
 .issue:hover { background: #f6f8fa; }
@@ -242,9 +243,11 @@ textarea { width: 100%; box-sizing: border-box; height: 120px; margin-top: 6px;
       plural(result.text.length, 'символ', 'символа', 'символов')));
 
     // "JSON was not checked yet / stopped at the first error": more errors may follow.
-    const isNotice = function (i) { return i.severity === 'info' && i.source === 'json'; };
+    const isNotice = function (i) {
+      return i.severity === 'info' && (i.source === 'json' || i.source === 'text');
+    };
     for (const issue of result.issues.filter(isNotice)) {
-      header.appendChild(el('div', 'notice', issue.message));
+      header.appendChild(el('div', issue.source === 'text' ? 'notice soft' : 'notice', issue.message));
     }
 
     const codeBox = el('div', 'code');

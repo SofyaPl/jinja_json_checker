@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import List, Set
 
@@ -14,6 +15,8 @@ JSON_BLOCKED = ("JSON ещё не проверен: сначала исправ�
 JSON_STOPPED = ("Проверка JSON остановилась на первой ошибке. "
                 "После её исправления могут найтись следующие")
 NOT_JSON = "Это не похоже на JSON или шаблон: проверены только кавычки и невидимые символы"
+MISSING_OPEN = "Не хватает «{» в начале: текст начинается сразу с ключа"
+KEY_START_RE = re.compile(r"[ \t\r\n]*\"(?:[^\"\\\n]|\\.)*\"[ \t\r\n]*:")
 
 
 @dataclass
@@ -35,9 +38,13 @@ class Result:
         return not self.errors
 
 
+def _starts_with_key(masked: str) -> bool:
+    return bool(KEY_START_RE.match(masked))
+
+
 def detect_mode(text: str, masked: str) -> str:
-    head = masked.lstrip()[:1]
-    if head in ("{", "["):
+    stripped = masked.strip(" \t\r\n")
+    if stripped[:1] in ("{", "[") or stripped[-1:] in ("}", "]") or _starts_with_key(masked):
         return "json"
     if masked != text:
         return "template"
@@ -45,6 +52,9 @@ def detect_mode(text: str, masked: str) -> str:
 
 
 def _check_json(analysis: template.Analysis, char_offsets: Set[int]) -> List[Issue]:
+    if _starts_with_key(analysis.masked):
+        lead = len(analysis.masked) - len(analysis.masked.lstrip(" \t\r\n"))
+        return [Issue("error", MISSING_OPEN, lead, 1, "json")]
     found = jsonparse.parse(analysis.masked, analysis.conditional)
     error = next((i for i in found if i.severity == "error"), None)
     if error is None or error.offset not in char_offsets:

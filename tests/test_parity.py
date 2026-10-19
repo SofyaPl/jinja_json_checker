@@ -36,6 +36,8 @@ BASES = [
     """[{% for x in items %}{"name": {{ x | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]""",
     """{"a": {% if foo %}1{% elif bar %}2{% else %}3{% endif %}, {# note #} "b": null}""",
     """{% set d = {"a": {"b": 1}} %}{"x": "{% raw %}{{ y }}{% endraw %}", "d": {{ d | tojson }}}""",
+    """{"t": {{ title | default("x") | tojson }}, "f": {{ 1 if a.b is defined else -2.5 }}}""",
+    """  "k": [1, 2],\n  "m": {{ m }}\n""",
 ]
 
 INSERTS = [",", '"', "'", "{", "}", "[", "]", ":", "“", "”", "\u00a0", "\u200b", "%", "#",

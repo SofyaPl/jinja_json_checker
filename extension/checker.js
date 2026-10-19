@@ -125,6 +125,7 @@
   const BLOCKS = new Set(['if', 'for', 'macro', 'call', 'filter', 'block', 'with',
     'autoescape', 'trans', 'set']);
   const MIDDLE = { elif: ['if'], else: ['if', 'for'], pluralize: ['trans'] };
+  const OPERATOR_WORDS = new Set(['and', 'or', 'not', 'in', 'is', 'if', 'else']);
   const STANDALONE = new Set(['extends', 'include', 'import', 'from', 'do', 'break',
     'continue', 'raw', 'endraw']);
 
@@ -140,6 +141,37 @@
 
   function tagOf(opener, start, end) {
     return { kind: opener === '{{' ? 'expr' : 'stmt', start: start, end: end, body: '', name: '' };
+  }
+
+  // Two values in a row inside {{ }}, like {{ title tojson }}.
+  // Returns [first, second, offset of first, length up to the end of second] or null.
+  function missingOperator(body) {
+    const re = /[ \t\r\n]*(?:("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|([0-9][0-9_]*(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)|([A-Za-z_][A-Za-z0-9_]*)|([^ \t\r\n]))/y;
+    let pos = 0;
+    let prev = null;
+    let prevString = false;
+    while (pos < body.length) {
+      re.lastIndex = pos;
+      const m = re.exec(body);
+      if (!m || re.lastIndex === pos) break;
+      pos = re.lastIndex;
+      const string = m[1], number = m[2], name = m[3], op = m[4];
+      const token = string || number || name || op;
+      const start = pos - token.length;
+      if (name === 'is') return null;
+      const value = !!(string || number || (name && !OPERATOR_WORDS.has(name)));
+      if (value && prev && !(string && prevString)) {
+        return [prev[0], token, prev[1], start + token.length - prev[1]];
+      }
+      if (value || (op && ')]}'.includes(op))) {
+        prev = [token, start];
+        prevString = !!string;
+      } else {
+        prev = null;
+        prevString = false;
+      }
+    }
+    return null;
   }
 
   function scanTag(text, start, issues) {
@@ -219,6 +251,13 @@
         issues.push(jerr('После «|» не указан фильтр', start, end - start));
       } else if (stripped.startsWith('|')) {
         issues.push(jerr('Перед «|» нет значения', start, end - start));
+      } else {
+        const lead = text.charAt(start + 2) === '-' || text.charAt(start + 2) === '+' ? 1 : 0;
+        const gap = missingOperator(body);
+        if (gap) {
+          issues.push(jerr('Между «' + gap[0] + '» и «' + gap[1] + '» не хватает оператора: ' +
+            'возможно, пропущена «|»', start + 2 + lead + gap[2], gap[3]));
+        }
       }
       return { kind: 'expr', start: start, end: end, body: body, name: '' };
     }
@@ -565,6 +604,7 @@
       let hint = '';
       if (ch === ']' || ch === '}') hint = ': лишняя закрывающая скобка «' + ch + '»';
       else if (ch === '{' || ch === '[') hint = ': похоже, JSON вставлен дважды или потеряна запятая';
+      else if (ch === ',') hint = ': после запятой идут ещё значения, возможно, не хватает «[» или «{» в начале';
       this.error('Лишний текст после конца JSON' + hint, this.i);
     }
   };
@@ -784,15 +824,27 @@
   const JSON_STOPPED = 'Проверка JSON остановилась на первой ошибке. ' +
     'После её исправления могут найтись следующие';
   const NOT_JSON = 'Это не похоже на JSON или шаблон: проверены только кавычки и невидимые символы';
+  const MISSING_OPEN = 'Не хватает «{» в начале: текст начинается сразу с ключа';
+  const KEY_START_RE = /^[ \t\r\n]*"(?:[^"\\\n]|\\.)*"[ \t\r\n]*:/;
+
+  function startsWithKey(masked) {
+    return KEY_START_RE.test(masked);
+  }
 
   function detectMode(text, masked) {
-    const head = masked.replace(/^\s+/, '').slice(0, 1);
-    if (head === '{' || head === '[') return 'json';
+    const stripped = masked.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, '');
+    const head = stripped.slice(0, 1);
+    const tail = stripped.slice(-1);
+    if (head === '{' || head === '[' || tail === '}' || tail === ']' || startsWithKey(masked)) return 'json';
     if (masked !== text) return 'template';
     return 'text';
   }
 
   function checkJson(analysis, charOffsets) {
+    if (startsWithKey(analysis.masked)) {
+      const lead = analysis.masked.length - analysis.masked.replace(/^[ \t\r\n]+/, '').length;
+      return [makeIssue('error', MISSING_OPEN, lead, 1, 'json')];
+    }
     const found = parseJson(analysis.masked, analysis.conditional);
     const error = found.find(function (i) { return i.severity === 'error'; });
     if (!error || !charOffsets.has(error.offset)) return found;
